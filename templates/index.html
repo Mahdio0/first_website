@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>YouTube Video Summarizer &amp; Mindmap</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <!-- D3.js and Markmap for interactive mindmap rendering -->
+    <script src="https://cdn.jsdelivr.net/npm/d3@7"></script>
+    <script src="https://cdn.jsdelivr.net/npm/markmap-view@0.17.0/dist/browser/index.js"></script>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>🎬 YouTube Video Summarizer</h1>
+            <p class="subtitle">Enter a YouTube video URL to get a summary and interactive mindmap</p>
+        </header>
+
+        <form id="url-form">
+            <div class="input-group">
+                <input
+                    type="text"
+                    id="video-url"
+                    name="url"
+                    placeholder="Paste a YouTube video URL here (e.g., https://www.youtube.com/watch?v=...)"
+                    required
+                    autocomplete="off"
+                >
+                <button type="submit" id="submit-btn">
+                    <span class="btn-text">Summarize</span>
+                    <span class="btn-loading" hidden>
+                        <span class="spinner"></span> Processing...
+                    </span>
+                </button>
+            </div>
+        </form>
+
+        <div id="error-message" class="error" hidden></div>
+
+        <div id="results" hidden>
+            <section class="result-section">
+                <h2>📝 Summary</h2>
+                <div id="summary-content" class="summary-box"></div>
+            </section>
+
+            <section class="result-section">
+                <h2>🧠 Mindmap</h2>
+                <div id="mindmap-container">
+                    <svg id="mindmap-svg"></svg>
+                </div>
+            </section>
+        </div>
+    </div>
+
+    <script src="{{ url_for('static', filename='js/main.js') }}"></script>
+</body>
+</html>

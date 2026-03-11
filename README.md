@@ -39,38 +39,6 @@ Then open http://localhost:5000 in your browser.
 python -m unittest discover tests -v
 ```
 
-## Deployment
-
-### Deploy to Render (Recommended — Free Tier)
-
-1. Push this repository to GitHub.
-2. Go to [render.com](https://render.com) and sign up / log in.
-3. Click **New → Web Service** and connect your GitHub repository.
-4. Render will auto-detect the `render.yaml` blueprint. Confirm and deploy.
-
-Alternatively, click the button below for one-click deploy:
-
-[![Deploy to Render](https://render.com/images/deploy-to-render-button.svg)](https://render.com/deploy?repo=https://github.com/Mahdio0/first_website)
-
-### Deploy with Docker
-
-```bash
-# Build the image
-docker build -t youtube-summarizer .
-
-# Run the container
-docker run -p 8000:8000 youtube-summarizer
-```
-
-Then open http://localhost:8000.
-
-### Deploy to Heroku
-
-```bash
-heroku create
-git push heroku main
-```
-
 ## Project Structure
 
 ```

@@ -180,6 +180,62 @@ class TestFlaskAPI(unittest.TestCase):
         mock_api = MagicMock()
         mock_ytt_class.return_value = mock_api
         mock_api.fetch.side_effect = Exception("No transcript")
+        mock_api.list.side_effect = Exception("No transcripts available")
+
+        resp = self.client.post(
+            "/api/summarize",
+            data=json.dumps({"url": "https://www.youtube.com/watch?v=dQw4w9WgXcQ"}),
+            content_type="application/json",
+        )
+        self.assertEqual(resp.status_code, 400)
+        data = json.loads(resp.data)
+        self.assertIn("Could not retrieve transcript", data["error"])
+
+    @patch("app.YouTubeTranscriptApi")
+    def test_api_fallback_to_non_english_transcript(self, mock_ytt_class):
+        mock_api = MagicMock()
+        mock_ytt_class.return_value = mock_api
+        mock_api.fetch.side_effect = Exception("No English transcript")
+
+        # Simulate a non-English transcript available via list()
+        mock_transcript_obj = MagicMock()
+        mock_transcript_obj.language_code = "fr"
+        mock_translated = MagicMock()
+        mock_transcript_obj.translate.return_value = mock_translated
+
+        mock_snippet = MagicMock()
+        mock_snippet.text = "Bonjour le monde"
+        mock_translated.fetch.return_value = [mock_snippet]
+
+        mock_api.list.return_value = iter([mock_transcript_obj])
+
+        with patch("app.TextFormatter") as mock_fmt_class:
+            mock_formatter = MagicMock()
+            mock_fmt_class.return_value = mock_formatter
+            mock_formatter.format_transcript.return_value = (
+                "Python is a great programming language. "
+                "It is used in web development and data science. "
+                "Machine learning is a popular field. "
+                "Flask is a lightweight web framework."
+            )
+
+            resp = self.client.post(
+                "/api/summarize",
+                data=json.dumps({"url": "https://www.youtube.com/watch?v=dQw4w9WgXcQ"}),
+                content_type="application/json",
+            )
+            self.assertEqual(resp.status_code, 200)
+            data = json.loads(resp.data)
+            self.assertIn("summary", data)
+            self.assertIn("mindmap", data)
+            mock_transcript_obj.translate.assert_called_once_with("en")
+
+    @patch("app.YouTubeTranscriptApi")
+    def test_api_fallback_no_transcripts_available(self, mock_ytt_class):
+        mock_api = MagicMock()
+        mock_ytt_class.return_value = mock_api
+        mock_api.fetch.side_effect = Exception("No English transcript")
+        mock_api.list.return_value = iter([])
 
         resp = self.client.post(
             "/api/summarize",

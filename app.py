@@ -61,8 +61,25 @@ def api_summarize():
 
     try:
         ytt_api = YouTubeTranscriptApi()
-        transcript = ytt_api.fetch(video_id)
         formatter = TextFormatter()
+        try:
+            transcript = ytt_api.fetch(video_id)
+        except Exception:
+            # Fetch failed; try listing available transcripts as fallback
+            transcript_list = ytt_api.list(video_id)
+            transcript_obj = next(iter(transcript_list), None)
+            if transcript_obj is None:
+                return jsonify({
+                    "error": "Could not retrieve transcript for this video. "
+                             "The video may not have captions available."
+                }), 400
+            # Translate to English if possible, otherwise use as-is
+            if transcript_obj.language_code != "en":
+                try:
+                    transcript_obj = transcript_obj.translate("en")
+                except Exception:
+                    pass
+            transcript = transcript_obj.fetch()
         full_text = formatter.format_transcript(transcript)
     except Exception:
         return jsonify({

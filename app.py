@@ -65,7 +65,7 @@ def api_summarize():
         try:
             transcript = ytt_api.fetch(video_id)
         except Exception:
-            # English not available; try any available transcript
+            # Fetch failed; try listing available transcripts as fallback
             transcript_list = ytt_api.list(video_id)
             transcript_obj = next(iter(transcript_list), None)
             if transcript_obj is None:

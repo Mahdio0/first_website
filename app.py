@@ -11,7 +11,7 @@ from mindmap import generate_mindmap
 from summarizer import summarize
 
 app = Flask(__name__)
-PREFERRED_TRANSCRIPT_LANGUAGES = ("en", "en-US", "en-GB")
+ENGLISH_TRANSCRIPT_LANGUAGES = ("en", "en-US", "en-GB")
 
 
 def extract_video_id(url):
@@ -46,7 +46,7 @@ def fetch_video_transcript(video_id):
     last_error = None
 
     try:
-        return ytt_api.fetch(video_id, languages=PREFERRED_TRANSCRIPT_LANGUAGES)
+        return ytt_api.fetch(video_id, languages=ENGLISH_TRANSCRIPT_LANGUAGES)
     except Exception as exc:
         last_error = exc
 
@@ -56,7 +56,7 @@ def fetch_video_transcript(video_id):
     candidates = []
 
     try:
-        candidates.append(transcript_list.find_transcript(PREFERRED_TRANSCRIPT_LANGUAGES))
+        candidates.append(transcript_list.find_transcript(ENGLISH_TRANSCRIPT_LANGUAGES))
     except Exception:
         pass
 
@@ -65,15 +65,19 @@ def fetch_video_transcript(video_id):
             candidates.append(transcript)
 
     for transcript in candidates:
+        fetch_targets = [transcript]
+
         if getattr(transcript, "language_code", None) != "en":
             try:
-                return transcript.translate("en").fetch()
+                fetch_targets.insert(0, transcript.translate("en"))
             except Exception as exc:
                 last_error = exc
-        try:
-            return transcript.fetch()
-        except Exception as exc:
-            last_error = exc
+
+        for fetch_target in fetch_targets:
+            try:
+                return fetch_target.fetch()
+            except Exception as exc:
+                last_error = exc
 
     if last_error is not None:
         raise last_error

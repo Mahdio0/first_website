@@ -7,7 +7,7 @@ from unittest.mock import MagicMock, patch
 from app import app, extract_video_id
 from mindmap import generate_mindmap
 from summarizer import summarize
-from youtube_transcript_api._errors import RequestBlocked
+from youtube_transcript_api._errors import IpBlocked, RequestBlocked
 
 
 class TestExtractVideoId(unittest.TestCase):
@@ -248,7 +248,7 @@ class TestFlaskAPI(unittest.TestCase):
         self.assertIn("Could not retrieve transcript", data["error"])
 
     @patch("app.YouTubeTranscriptApi")
-    def test_api_fallback_tries_next_available_transcript(self, mock_ytt_class):
+    def test_api_fallback_skips_failed_transcript_and_uses_working_one(self, mock_ytt_class):
         mock_api = MagicMock()
         mock_ytt_class.return_value = mock_api
         mock_api.fetch.side_effect = Exception("No English transcript")
@@ -295,6 +295,23 @@ class TestFlaskAPI(unittest.TestCase):
         mock_ytt_class.return_value = mock_api
         mock_api.fetch.side_effect = RequestBlocked("dQw4w9WgXcQ")
         mock_api.list.side_effect = RequestBlocked("dQw4w9WgXcQ")
+
+        resp = self.client.post(
+            "/api/summarize",
+            data=json.dumps({"url": "https://www.youtube.com/watch?v=dQw4w9WgXcQ"}),
+            content_type="application/json",
+        )
+
+        self.assertEqual(resp.status_code, 503)
+        data = json.loads(resp.data)
+        self.assertIn("If you're deploying on Render", data["error"])
+
+    @patch("app.YouTubeTranscriptApi")
+    def test_api_ip_blocked_returns_render_hint(self, mock_ytt_class):
+        mock_api = MagicMock()
+        mock_ytt_class.return_value = mock_api
+        mock_api.fetch.side_effect = IpBlocked("dQw4w9WgXcQ")
+        mock_api.list.side_effect = IpBlocked("dQw4w9WgXcQ")
 
         resp = self.client.post(
             "/api/summarize",

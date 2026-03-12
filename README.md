@@ -39,6 +39,10 @@ Then open http://localhost:5000 in your browser.
 python -m unittest discover tests -v
 ```
 
+## Render deployment note
+
+When this app is deployed on Render or another shared cloud host, YouTube may block transcript requests from the server IP. The app now returns a clearer deployment-specific error in that case, but the underlying workaround is to retry later or use a proxy/cookies-enabled setup for transcript requests.
+
 ## Project Structure
 
 ```

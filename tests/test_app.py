@@ -7,6 +7,7 @@ from unittest.mock import MagicMock, patch
 from app import app, extract_video_id
 from mindmap import generate_mindmap
 from summarizer import summarize
+from youtube_transcript_api._errors import RequestBlocked
 
 
 class TestExtractVideoId(unittest.TestCase):
@@ -245,6 +246,65 @@ class TestFlaskAPI(unittest.TestCase):
         self.assertEqual(resp.status_code, 400)
         data = json.loads(resp.data)
         self.assertIn("Could not retrieve transcript", data["error"])
+
+    @patch("app.YouTubeTranscriptApi")
+    def test_api_fallback_tries_next_available_transcript(self, mock_ytt_class):
+        mock_api = MagicMock()
+        mock_ytt_class.return_value = mock_api
+        mock_api.fetch.side_effect = Exception("No English transcript")
+
+        first_transcript = MagicMock()
+        first_transcript.language_code = "de"
+        first_transcript.translate.side_effect = Exception("Translation failed")
+        first_transcript.fetch.side_effect = Exception("Fetch failed")
+
+        second_transcript = MagicMock()
+        second_transcript.language_code = "en"
+
+        mock_snippet = MagicMock()
+        mock_snippet.text = "Recovered transcript"
+        second_transcript.fetch.return_value = [mock_snippet]
+
+        transcript_list = MagicMock()
+        transcript_list.find_transcript.side_effect = Exception("No preferred transcript")
+        transcript_list.__iter__.return_value = iter([first_transcript, second_transcript])
+        mock_api.list.return_value = transcript_list
+
+        with patch("app.TextFormatter") as mock_fmt_class:
+            mock_formatter = MagicMock()
+            mock_fmt_class.return_value = mock_formatter
+            mock_formatter.format_transcript.return_value = (
+                "Python is a great programming language. "
+                "It is used in web development and data science. "
+                "Machine learning is a popular field. "
+                "Flask is a lightweight web framework."
+            )
+
+            resp = self.client.post(
+                "/api/summarize",
+                data=json.dumps({"url": "https://www.youtube.com/watch?v=dQw4w9WgXcQ"}),
+                content_type="application/json",
+            )
+
+        self.assertEqual(resp.status_code, 200)
+        second_transcript.fetch.assert_called_once()
+
+    @patch("app.YouTubeTranscriptApi")
+    def test_api_request_blocked_returns_render_hint(self, mock_ytt_class):
+        mock_api = MagicMock()
+        mock_ytt_class.return_value = mock_api
+        mock_api.fetch.side_effect = RequestBlocked("dQw4w9WgXcQ")
+        mock_api.list.side_effect = RequestBlocked("dQw4w9WgXcQ")
+
+        resp = self.client.post(
+            "/api/summarize",
+            data=json.dumps({"url": "https://www.youtube.com/watch?v=dQw4w9WgXcQ"}),
+            content_type="application/json",
+        )
+
+        self.assertEqual(resp.status_code, 503)
+        data = json.loads(resp.data)
+        self.assertIn("If you're deploying on Render", data["error"])
 
 
 if __name__ == "__main__":

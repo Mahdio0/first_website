@@ -1,5 +1,6 @@
 """Flask application for YouTube video summarization and mindmap generation."""
 
+import os
 import re
 
 from flask import Flask, jsonify, render_template, request
@@ -10,6 +11,7 @@ from mindmap import generate_mindmap
 from summarizer import summarize
 
 app = Flask(__name__)
+PREFERRED_TRANSCRIPT_LANGUAGES = ("en", "en-US", "en-GB")
 
 
 def extract_video_id(url):
@@ -38,6 +40,73 @@ def index():
     return render_template("index.html")
 
 
+def fetch_video_transcript(video_id):
+    """Fetch a transcript, trying multiple fallback strategies when needed."""
+    ytt_api = YouTubeTranscriptApi()
+    last_error = None
+
+    try:
+        return ytt_api.fetch(video_id, languages=PREFERRED_TRANSCRIPT_LANGUAGES)
+    except Exception as exc:
+        last_error = exc
+
+    transcript_list = ytt_api.list(video_id)
+    available_transcripts = list(transcript_list)
+
+    candidates = []
+
+    try:
+        candidates.append(transcript_list.find_transcript(PREFERRED_TRANSCRIPT_LANGUAGES))
+    except Exception:
+        pass
+
+    for transcript in available_transcripts:
+        if transcript not in candidates:
+            candidates.append(transcript)
+
+    for transcript in candidates:
+        if getattr(transcript, "language_code", None) != "en":
+            try:
+                return transcript.translate("en").fetch()
+            except Exception as exc:
+                last_error = exc
+        try:
+            return transcript.fetch()
+        except Exception as exc:
+            last_error = exc
+
+    if last_error is not None:
+        raise last_error
+
+    raise RuntimeError("No transcript candidates were available.")
+
+
+def build_transcript_error(error):
+    """Create a user-facing error message for transcript retrieval failures."""
+    error_name = type(error).__name__
+    app.logger.warning("Transcript retrieval failed: %s", error, exc_info=error)
+
+    if error_name in {"RequestBlocked", "IpBlocked", "YouTubeRequestFailed", "HTTPError"}:
+        message = (
+            "Could not reach YouTube to retrieve the transcript right now. "
+            "If you're deploying on Render, YouTube may be blocking the server IP. "
+            "Try again later or use a proxy/cookies-enabled deployment."
+        )
+        return jsonify({"error": message}), 503
+
+    if error_name in {"ConnectionError", "Timeout", "ReadTimeout"}:
+        message = (
+            "Could not connect to YouTube to retrieve the transcript. "
+            "Please try again in a moment."
+        )
+        return jsonify({"error": message}), 503
+
+    return jsonify({
+        "error": "Could not retrieve transcript for this video. "
+                 "The video may not have captions available."
+    }), 400
+
+
 @app.route("/api/summarize", methods=["POST"])
 def api_summarize():
     """API endpoint to summarize a YouTube video and generate a mindmap.
@@ -60,32 +129,11 @@ def api_summarize():
         return jsonify({"error": "Invalid YouTube URL. Please check and try again."}), 400
 
     try:
-        ytt_api = YouTubeTranscriptApi()
+        transcript = fetch_video_transcript(video_id)
         formatter = TextFormatter()
-        try:
-            transcript = ytt_api.fetch(video_id)
-        except Exception:
-            # Fetch failed; try listing available transcripts as fallback
-            transcript_list = ytt_api.list(video_id)
-            transcript_obj = next(iter(transcript_list), None)
-            if transcript_obj is None:
-                return jsonify({
-                    "error": "Could not retrieve transcript for this video. "
-                             "The video may not have captions available."
-                }), 400
-            # Translate to English if possible, otherwise use as-is
-            if transcript_obj.language_code != "en":
-                try:
-                    transcript_obj = transcript_obj.translate("en")
-                except Exception:
-                    pass
-            transcript = transcript_obj.fetch()
         full_text = formatter.format_transcript(transcript)
-    except Exception:
-        return jsonify({
-            "error": "Could not retrieve transcript for this video. "
-                     "The video may not have captions available."
-        }), 400
+    except Exception as exc:
+        return build_transcript_error(exc)
 
     if not full_text.strip():
         return jsonify({"error": "Transcript is empty for this video."}), 400
@@ -104,7 +152,5 @@ def api_summarize():
 
 
 if __name__ == "__main__":
-    import os
-
     debug = os.environ.get("FLASK_DEBUG", "0") == "1"
     app.run(debug=debug, port=5000)
